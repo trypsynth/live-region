@@ -5,7 +5,7 @@ version = "0.1.0"
 readme = "README.md"
 repository = "https://github.com/trypsynth/live-region"
 keywords = ["gui", "ui", "utility", "windows"]
-categories = ["Accessibility", "GUI"]
+categories = ["accessibility", "gui"]
 license = "MIT"
 edition = "2024"
 
