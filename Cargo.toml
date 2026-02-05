@@ -1,7 +1,7 @@
 [package]
 name = "live-region"
-description = "Simple screen reader speech output in wxDragon applications using a live region"
-version = "0.1.1"
+description = "Simple screen reader output in wxDragon applications using a live region"
+version = "0.1.2"
 readme = "README.md"
 repository = "https://github.com/trypsynth/live-region"
 keywords = ["gui", "ui", "utility", "windows"]
@@ -9,8 +9,8 @@ categories = ["accessibility", "gui"]
 license = "MIT"
 edition = "2024"
 
-[dependencies]
-wxdragon = { git = "https://github.com/AllenDang/wxDragon", branch = "main", version = "0.9.8" }
-
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Ole", "Win32_System_Variant"] }
+
+[dependencies]
+wxdragon = "0.9.9"
