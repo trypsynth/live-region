@@ -13,4 +13,5 @@ edition = "2024"
 windows = { version = "0.62.2", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Ole", "Win32_System_Variant"] }
 
 [dependencies]
+objc = "0.2.7"
 wxdragon = "0.9.9"
