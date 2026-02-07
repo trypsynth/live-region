@@ -99,7 +99,7 @@ mod platform_impl {
 	use wxdragon::prelude::WxWidget;
 
 	#[link(name = "AppKit", kind = "framework")]
-	extern "C" {
+	unsafe extern "C" {
 		fn NSAccessibilityPostNotification(element: *mut Object, notification: *mut Object);
 	}
 
