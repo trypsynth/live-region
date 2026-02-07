@@ -4,7 +4,7 @@
 use wxdragon::prelude::{StaticText, WxWidget};
 
 #[cfg(target_os = "windows")]
-mod windows_impl {
+mod platform_impl {
 	use std::{cell::RefCell, mem::ManuallyDrop};
 
 	use windows::Win32::{
@@ -26,7 +26,6 @@ mod windows_impl {
 
 	const LIVE_REGION_POLITE: u32 = 1;
 
-	/// Note: this function initializes COM in STA mode on first use.
 	pub fn set_live_region(window: &impl WxWidget) -> bool {
 		let Some(acc_prop) = acc_prop_services() else {
 			return false;
@@ -92,8 +91,60 @@ mod windows_impl {
 	}
 }
 
-#[cfg(not(target_os = "windows"))]
-mod windows_impl {
+#[cfg(target_os = "macos")]
+mod platform_impl {
+	use std::ffi::CString;
+
+	use objc::{class, msg_send, runtime::Object, sel, sel_impl};
+	use wxdragon::prelude::WxWidget;
+
+	#[link(name = "AppKit", kind = "framework")]
+	unsafe extern "C" {
+		fn NSAccessibilityPostNotification(element: *mut Object, notification: *mut Object);
+	}
+
+	pub fn set_live_region(window: &impl WxWidget) -> bool {
+		let handle = window.get_handle();
+		if handle.is_null() {
+			return false;
+		}
+		let view = handle as *mut Object;
+
+		unsafe {
+			let cls_nsstring = class!(NSString);
+
+			let key_str = CString::new("AXLiveRegion").unwrap();
+			let key: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: key_str.as_ptr()];
+
+			let val_str = CString::new("Polite").unwrap();
+			let val: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: val_str.as_ptr()];
+
+			let _: () = msg_send![view, accessibilitySetValue: val forAttribute: key];
+		}
+		true
+	}
+
+	pub fn notify_live_region_changed(window: &impl WxWidget) -> bool {
+		let handle = window.get_handle();
+		if handle.is_null() {
+			return false;
+		}
+		let view = handle as *mut Object;
+
+		unsafe {
+			let cls_nsstring = class!(NSString);
+			let notification_str = CString::new("AXLiveRegionChanged").unwrap();
+			let notification_name: *mut Object =
+				msg_send![cls_nsstring, stringWithUTF8String: notification_str.as_ptr()];
+
+			NSAccessibilityPostNotification(view, notification_name);
+		}
+		true
+	}
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+mod platform_impl {
 	use wxdragon::prelude::WxWidget;
 
 	pub fn set_live_region(_window: &impl WxWidget) -> bool {
@@ -106,10 +157,10 @@ mod windows_impl {
 }
 
 pub fn set_live_region(window: &impl WxWidget) -> bool {
-	windows_impl::set_live_region(window)
+	platform_impl::set_live_region(window)
 }
 
 pub fn announce(label: StaticText, message: &str) {
 	label.set_label(message);
-	let _ = windows_impl::notify_live_region_changed(&label);
+	let _ = platform_impl::notify_live_region_changed(&label);
 }
