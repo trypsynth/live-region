@@ -119,18 +119,13 @@ mod platform_impl {
 		unsafe {
 			let nsapp: *mut Object = msg_send![class!(NSApplication), sharedApplication];
 			let cls_nsstring = class!(NSString);
-
 			let notif_cstr = CString::new("AXAnnouncementRequested").unwrap();
 			let notification: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: notif_cstr.as_ptr()];
-
 			let key_cstr = CString::new("AXAnnouncementKey").unwrap();
 			let key: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: key_cstr.as_ptr()];
-
 			let msg_cstr = CString::new(message).unwrap();
 			let msg_obj: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: msg_cstr.as_ptr()];
-
 			let dict: *mut Object = msg_send![class!(NSDictionary), dictionaryWithObject:msg_obj forKey:key];
-
 			NSAccessibilityPostNotificationWithUserInfo(nsapp, notification, dict);
 		}
 		true
