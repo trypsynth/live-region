@@ -51,7 +51,11 @@ mod platform_impl {
 		}
 	}
 
-	pub fn notify_live_region_changed(window: &impl WxWidget) -> bool {
+	pub fn announce(window: &impl WxWidget, _message: &str) -> bool {
+		notify_live_region_changed(window)
+	}
+
+	fn notify_live_region_changed(window: &impl WxWidget) -> bool {
 		let Some(hwnd) = hwnd_from_widget(window) else {
 			return false;
 		};
@@ -100,44 +104,34 @@ mod platform_impl {
 
 	#[link(name = "AppKit", kind = "framework")]
 	unsafe extern "C" {
-		fn NSAccessibilityPostNotification(element: *mut Object, notification: *mut Object);
+		fn NSAccessibilityPostNotificationWithUserInfo(
+			element: *mut Object,
+			notification: *mut Object,
+			user_info: *mut Object,
+		);
 	}
 
-	pub fn set_live_region(window: &impl WxWidget) -> bool {
-		let handle = window.get_handle();
-		if handle.is_null() {
-			return false;
-		}
-		let view = handle as *mut Object;
-
-		unsafe {
-			let cls_nsstring = class!(NSString);
-
-			let key_str = CString::new("AXLiveRegion").unwrap();
-			let key: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: key_str.as_ptr()];
-
-			let val_str = CString::new("Polite").unwrap();
-			let val: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: val_str.as_ptr()];
-
-			let _: () = msg_send![view, accessibilitySetValue: val forAttribute: key];
-		}
+	pub fn set_live_region(_window: &impl WxWidget) -> bool {
 		true
 	}
 
-	pub fn notify_live_region_changed(window: &impl WxWidget) -> bool {
-		let handle = window.get_handle();
-		if handle.is_null() {
-			return false;
-		}
-		let view = handle as *mut Object;
-
+	pub fn announce(_window: &impl WxWidget, message: &str) -> bool {
 		unsafe {
+			let nsapp: *mut Object = msg_send![class!(NSApplication), sharedApplication];
 			let cls_nsstring = class!(NSString);
-			let notification_str = CString::new("AXLiveRegionChanged").unwrap();
-			let notification_name: *mut Object =
-				msg_send![cls_nsstring, stringWithUTF8String: notification_str.as_ptr()];
 
-			NSAccessibilityPostNotification(view, notification_name);
+			let notif_cstr = CString::new("AXAnnouncementRequested").unwrap();
+			let notification: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: notif_cstr.as_ptr()];
+
+			let key_cstr = CString::new("AXAnnouncementKey").unwrap();
+			let key: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: key_cstr.as_ptr()];
+
+			let msg_cstr = CString::new(message).unwrap();
+			let msg_obj: *mut Object = msg_send![cls_nsstring, stringWithUTF8String: msg_cstr.as_ptr()];
+
+			let dict: *mut Object = msg_send![class!(NSDictionary), dictionaryWithObject:msg_obj forKey:key];
+
+			NSAccessibilityPostNotificationWithUserInfo(nsapp, notification, dict);
 		}
 		true
 	}
@@ -151,7 +145,7 @@ mod platform_impl {
 		false
 	}
 
-	pub fn notify_live_region_changed(_window: &impl WxWidget) -> bool {
+	pub fn announce(_window: &impl WxWidget, _message: &str) -> bool {
 		false
 	}
 }
@@ -161,6 +155,7 @@ pub fn set_live_region(window: &impl WxWidget) -> bool {
 }
 
 pub fn announce(label: StaticText, message: &str) {
+	#[cfg(target_os = "windows")]
 	label.set_label(message);
-	let _ = platform_impl::notify_live_region_changed(&label);
+	let _ = platform_impl::announce(&label, message);
 }
