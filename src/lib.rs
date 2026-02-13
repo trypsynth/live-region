@@ -3,6 +3,19 @@
 
 use wxdragon::prelude::{StaticText, WxWidget};
 
+fn sanitize_message(message: &str) -> String {
+	let mut cleaned = String::new();
+	for ch in message.chars() {
+		if matches!(ch, '\n' | '\r' | '\t') {
+			cleaned.push(' ');
+		} else if !ch.is_control() {
+			cleaned.push(ch);
+		}
+	}
+	let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+	collapsed.chars().take(512).collect()
+}
+
 #[cfg(target_os = "windows")]
 mod platform_impl {
 	use std::{cell::RefCell, mem::ManuallyDrop};
@@ -132,7 +145,55 @@ mod platform_impl {
 	}
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(target_os = "linux")]
+mod platform_impl {
+	use std::{process::Command, sync::OnceLock, thread};
+
+	use wxdragon::prelude::WxWidget;
+
+	fn has_gdbus() -> bool {
+		static HAS_GDBUS: OnceLock<bool> = OnceLock::new();
+		*HAS_GDBUS.get_or_init(|| Command::new("gdbus").arg("--version").output().is_ok())
+	}
+
+	fn present_with_orca(message: &str) -> bool {
+		if !has_gdbus() {
+			return false;
+		}
+		Command::new("gdbus")
+			.arg("call")
+			.arg("--session")
+			.arg("--dest")
+			.arg("org.gnome.Orca.Service")
+			.arg("--object-path")
+			.arg("/org/gnome/Orca/Service")
+			.arg("--timeout")
+			.arg("1")
+			.arg("--method")
+			.arg("org.gnome.Orca.Service.PresentMessage")
+			.arg(message)
+			.output()
+			.map(|output| output.status.success())
+			.unwrap_or(false)
+	}
+
+	pub fn set_live_region(_window: &impl WxWidget) -> bool {
+		false
+	}
+
+	pub fn announce(_window: &impl WxWidget, message: &str) -> bool {
+		if !has_gdbus() {
+			return false;
+		}
+		let spoken = message.to_string();
+		thread::spawn(move || {
+			let _ = present_with_orca(&spoken);
+		});
+		true
+	}
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 mod platform_impl {
 	use wxdragon::prelude::WxWidget;
 
@@ -150,7 +211,11 @@ pub fn set_live_region(window: &impl WxWidget) -> bool {
 }
 
 pub fn announce(label: StaticText, message: &str) {
+	let message = sanitize_message(message);
+	if message.is_empty() {
+		return;
+	}
 	#[cfg(target_os = "windows")]
-	label.set_label(message);
-	let _ = platform_impl::announce(&label, message);
+	label.set_label(&message);
+	let _ = platform_impl::announce(&label, &message);
 }
