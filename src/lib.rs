@@ -26,13 +26,13 @@ mod platform_impl;
 ///
 /// 1. High interrupts low (because of rule 3), low also interrupts low (because of rule 2), but medium does not interrupt low.
 /// 2. If we have a low currently speaking and a medium in the queue, a new low or high
-// interrupts the current low (rules 2 and 3), but it doesn't flush the queue (rule 4). This
-/// means that what we hear after the interruption is the previously-enqueued medium, not the newly-arriving low/high. This is utterly cursed behavior.
+///    interrupts the current low (rules 2 and 3), but it doesn't flush the queue (rule 4). This
+///    means that what we hear after the interruption is the previously-enqueued medium, not the newly-arriving low/high. This is utterly cursed behavior.
 /// 3. Under these rules, it is impossible to implement a polite / assertive system. There is no
-// combination of priorities that guarantees queuing. always using high guarantees
-/// no queuing. This does not make priorities useless, you can
-/// still use them to queue announcements after standard VoiceOver speech, emitted in response to focus events and such, but it does
-/// significantly limit their usefullness.
+///    combination of priorities that guarantees queuing. always using high guarantees
+///    no queuing. This does not make priorities useless, you can
+///    still use them to queue announcements after standard `VoiceOver` speech, emitted in response to focus events and such, but it does
+///    significantly limit their usefullness.
 ///
 /// Note that all of this is likely due to Apple bugs and may change from version to version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
