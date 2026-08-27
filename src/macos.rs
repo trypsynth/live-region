@@ -34,6 +34,10 @@ struct PendingAnnouncement {
 	priority: isize,
 }
 
+// A no-op stub kept signature-compatible with the other backends. Marking it `const` only
+// pushes `missing_const_for_fn` up into the public wrapper in `lib.rs`, which cannot be
+// `const` on the platforms whose backends call into FFI.
+#[allow(clippy::missing_const_for_fn)]
 pub fn set_live_region(_window: &impl WxWidget) -> bool {
 	true
 }
