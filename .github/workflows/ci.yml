@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A superseded run is wasted wxWidgets build time, so cancel it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # wxdragon-sys compiles wxWidgets from source on a cold cache.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install wxWidgets build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libclang-dev pkg-config libgtk-3-dev libpng-dev libjpeg-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libxkbcommon-dev libexpat1-dev libtiff-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Keep the wxWidgets build even when a later step fails.
+          cache-on-failure: true
+
+      # The crate is `#![deny(warnings)]`, so clippy needs no extra -D flag.
+      - name: Clippy
+        run: cargo clippy --all-targets
+
+      - name: Build
+        run: cargo build --all-targets
+
+      - name: Test
+        run: cargo test
+
+      - name: Docs
+        if: runner.os == 'Linux'
+        run: cargo doc --no-deps
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # rustfmt.toml sets group_imports and imports_granularity, which are nightly-only.
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      # `cargo fmt` only visits the platform module the host cfg selects, so check
+      # every source file directly to cover windows.rs / macos.rs / linux.rs at once.
+      - name: Check formatting
+        run: rustfmt --check --edition 2024 $(find src examples -name '*.rs') build.rs
