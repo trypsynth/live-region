@@ -11,8 +11,12 @@ mod platform_impl;
 
 /// How insistently a screen reader should deliver an announcement.
 ///
-/// Acted on only by macOS `VoiceOver`. Windows screen readers ignore UIA notification priorities,
-/// so the Windows implementation was omitted, the concept is absent on Linux entirely.
+/// Acted on by macOS `VoiceOver`, and on Linux by AT-SPI screen readers, which receive it as an
+/// `AtkLive` politeness ([`Low`](Priority::Low) and [`Medium`](Priority::Medium) map to polite,
+/// [`High`](Priority::High) to assertive). Windows screen readers ignore UIA notification
+/// priorities, so the Windows implementation was omitted.
+///
+/// The caveats below are specific to `VoiceOver`.
 ///
 /// Note that Voice Over's speech queuing implementation has significant issues. After extensive testing,
 /// I found that it seems to be governed by the following rules:
@@ -71,7 +75,7 @@ pub fn announce(label: StaticText, message: &str) {
 
 /// Announce `message` via the screen reader at an explicit [`Priority`].
 ///
-/// Only macOS acts on `priority`. See the documentation of [`Priority`] for rationale and caveats.
+/// macOS and Linux act on `priority`; Windows ignores it. See [`Priority`] for rationale and caveats.
 ///
 /// On macOS the announcement is delivered asynchronously, on the next main run loop iteration,
 /// so it isn't drowned out by accessibility notifications (such as caret moves) that the calling

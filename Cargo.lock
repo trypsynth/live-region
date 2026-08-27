@@ -596,6 +596,7 @@ name = "live-region"
 version = "0.2.0"
 dependencies = [
  "objc",
+ "pkg-config",
  "windows",
  "wxdragon",
 ]
