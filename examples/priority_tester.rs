@@ -1,5 +1,5 @@
-//! Example for manually testing how announcement priorities interact on
-//! macOS VoiceOver.
+//! Example for manually testing how announcement priorities interact, on macOS `VoiceOver` and
+//! on Windows screen readers reading UIA notifications.
 //!
 //! Type one directive per line in the text box, then press Speak:
 //!   h:<text>   announce <text> at Priority::High

@@ -11,10 +11,19 @@ mod platform_impl;
 
 /// How insistently a screen reader should deliver an announcement.
 ///
-/// Acted on by macOS `VoiceOver`, and on Linux by AT-SPI screen readers, which receive it as an
-/// `AtkLive` politeness ([`Low`](Priority::Low) and [`Medium`](Priority::Medium) map to polite,
-/// [`High`](Priority::High) to assertive). Windows screen readers ignore UIA notification
-/// priorities, so the Windows implementation was omitted.
+/// Acted on by every supported platform.
+///
+/// On Linux, AT-SPI screen readers receive it as an `AtkLive` politeness
+/// ([`Low`](Priority::Low) and [`Medium`](Priority::Medium) map to polite,
+/// [`High`](Priority::High) to assertive).
+///
+/// On Windows it becomes the processing mode of a UI Automation notification:
+/// [`Low`](Priority::Low) queues behind everything pending, [`Medium`](Priority::Medium) lets the
+/// current utterance finish and then supersedes anything staler, and [`High`](Priority::High)
+/// interrupts speech in progress. Verified against NVDA, which calls `speech.cancelSpeech()` for
+/// the mode [`High`](Priority::High) uses, and speaks at `Spri.NOW` instead of cancelling while a
+/// say all is running, so [`High`](Priority::High) does not chop up continuous reading. JAWS and
+/// Narrator honour the same UIA contract but their exact behaviour is untested here.
 ///
 /// The caveats below are specific to `VoiceOver`.
 ///
@@ -64,6 +73,10 @@ fn sanitize_message(message: &str) -> String {
 	collapsed.chars().take(512).collect()
 }
 
+/// Prepares `window` to be announced through.
+///
+/// Announcing does this on demand as well, so calling this up front is only useful to learn
+/// early whether announcements can work at all.
 pub fn set_live_region(window: &impl WxWidget) -> bool {
 	platform_impl::set_live_region(window)
 }
@@ -75,7 +88,8 @@ pub fn announce(label: StaticText, message: &str) {
 
 /// Announce `message` via the screen reader at an explicit [`Priority`].
 ///
-/// macOS and Linux act on `priority`; Windows ignores it. See [`Priority`] for rationale and caveats.
+/// Every platform acts on `priority`. See [`Priority`] for what each level means and for the
+/// `VoiceOver` caveats.
 ///
 /// On macOS the announcement is delivered asynchronously, on the next main run loop iteration,
 /// so it isn't drowned out by accessibility notifications (such as caret moves) that the calling
@@ -85,7 +99,5 @@ pub fn announce_with_priority(label: StaticText, message: &str, priority: Priori
 	if message.is_empty() {
 		return;
 	}
-	#[cfg(target_os = "windows")]
-	label.set_label(&message);
 	let _ = platform_impl::announce(&label, &message, priority);
 }

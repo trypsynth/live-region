@@ -598,6 +598,7 @@ dependencies = [
  "objc",
  "pkg-config",
  "windows",
+ "windows-core",
  "wxdragon",
 ]
 
