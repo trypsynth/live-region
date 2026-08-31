@@ -14,7 +14,7 @@ level = "warn"
 check-cfg = ['cfg(feature, values("cargo-clippy"))']
 
 [dependencies]
-wxdragon = "0.9.20"
+wxdragon = "0.9.21"
 
 [build-dependencies]
 pkg-config = "0.3"
