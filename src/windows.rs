@@ -12,29 +12,43 @@
 //! client at all, with no error anywhere. So the announcer window gets subclassed to answer
 //! `WM_GETOBJECT` with a provider of our own, which defers to the host provider for everything
 //! except being a valid event source.
+//!
+//! JAWS hears none of that. It speaks UIA notifications in applications it knows, but not the
+//! ones raised here, so an application that moved from the MSAA live region this crate used to
+//! raise went silent under JAWS while staying correct under NVDA
+//! (<https://github.com/trypsynth/paperback/issues/930>). While JAWS is running, the MSAA live
+//! region is therefore raised as well: the announcer's own text is what carries the message
+//! there, so the caller writes it into the window first. NVDA reads both, so this is done only
+//! when JAWS is present, to keep it from hearing every announcement twice.
 
 // The code `#[implement]` expands to trips these; they are not about anything written here.
 #![allow(clippy::ref_as_ptr, clippy::inline_always)]
 
-use std::{cell::RefCell, collections::HashMap, ffi::c_void};
+use std::{cell::RefCell, collections::HashMap, ffi::c_void, mem::ManuallyDrop};
 
 use windows::{
 	Win32::{
-		Foundation::{E_NOTIMPL, HWND, LPARAM, LRESULT, WPARAM},
-		System::Variant::VARIANT,
+		Foundation::{E_NOTIMPL, HWND, LPARAM, LRESULT, RPC_E_CHANGED_MODE, WPARAM},
+		System::{
+			Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx},
+			Variant::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_I4},
+		},
 		UI::{
 			Accessibility::{
-				IRawElementProviderSimple, IRawElementProviderSimple_Impl, NotificationKind_Other,
-				NotificationProcessing, NotificationProcessing_All, NotificationProcessing_CurrentThenMostRecent,
-				NotificationProcessing_ImportantMostRecent, ProviderOptions, ProviderOptions_ServerSideProvider,
-				ProviderOptions_UseComThreading, UIA_PATTERN_ID, UIA_PROPERTY_ID, UiaClientsAreListening,
-				UiaHostProviderFromHwnd, UiaRaiseNotificationEvent, UiaReturnRawElementProvider, UiaRootObjectId,
+				CLSID_AccPropServices, IAccPropServices, IRawElementProviderSimple, IRawElementProviderSimple_Impl,
+				LiveSetting_Property_GUID, NotificationKind_Other, NotificationProcessing, NotificationProcessing_All,
+				NotificationProcessing_CurrentThenMostRecent, NotificationProcessing_ImportantMostRecent, NotifyWinEvent,
+				ProviderOptions, ProviderOptions_ServerSideProvider, ProviderOptions_UseComThreading, UIA_PATTERN_ID,
+				UIA_PROPERTY_ID, UiaClientsAreListening, UiaHostProviderFromHwnd, UiaRaiseNotificationEvent,
+				UiaReturnRawElementProvider, UiaRootObjectId,
 			},
 			Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
-			WindowsAndMessaging::{WM_GETOBJECT, WM_NCDESTROY},
+			WindowsAndMessaging::{
+				CHILDID_SELF, EVENT_OBJECT_LIVEREGIONCHANGED, FindWindowW, OBJID_CLIENT, WM_GETOBJECT, WM_NCDESTROY,
+			},
 		},
 	},
-	core::{BSTR, IUnknown, Result, implement},
+	core::{BSTR, IUnknown, Result, implement, w},
 };
 use wxdragon::prelude::WxWidget;
 
@@ -42,6 +56,30 @@ use crate::Priority;
 
 /// Only has to be unique among subclasses this crate installs on a given window.
 const SUBCLASS_ID: usize = 0x6c76_7267;
+
+/// The politeness an MSAA live region is marked with: spoken when the screen reader next has a
+/// chance, rather than cutting off what it is saying. The UIA notification carries the real
+/// priority; this path has no way to.
+const LIVE_REGION_POLITE: u32 = 1;
+
+/// JAWS's main window. Its class name is how an application asks whether JAWS is running, and
+/// has been stable across releases for as long as JAWS has had one.
+fn jaws_is_running() -> bool {
+	unsafe { FindWindowW(w!("JFWUI2"), None) }.is_ok()
+}
+
+/// Whether the announcer window's own text has to carry the message.
+///
+/// True exactly when the MSAA live region will be raised, since that event says only "this
+/// window changed" and leaves the screen reader to read whatever the window now says.
+pub fn wants_announcer_text() -> bool {
+	jaws_is_running()
+}
+
+thread_local! {
+	/// The service that marks a window as an MSAA live region, created on first use.
+	static ACC_PROP_SERVICES: RefCell<Option<IAccPropServices>> = const { RefCell::new(None) };
+}
 
 thread_local! {
 	/// One provider per announcer window. The subclass proc has to hand the same provider back
@@ -177,7 +215,63 @@ pub fn announce(window: &impl WxWidget, message: &str, priority: Priority) -> bo
 	// `sanitize_message` has already stripped control characters, so this cannot contain a NUL.
 	let display = BSTR::from(message);
 	let activity = BSTR::new();
-	unsafe {
+	let raised = unsafe {
 		UiaRaiseNotificationEvent(&provider, NotificationKind_Other, processing(priority), &display, &activity).is_ok()
+	};
+	if jaws_is_running() {
+		return raise_live_region(hwnd) || raised;
+	}
+	raised
+}
+
+/// Marks `hwnd` as a polite MSAA live region and says its contents changed, which is the form
+/// JAWS reads. Marking is idempotent, so it is simply done again with every announcement.
+fn raise_live_region(hwnd: HWND) -> bool {
+	let Some(acc_prop) = acc_prop_services() else {
+		return false;
+	};
+	let variant = VARIANT {
+		Anonymous: VARIANT_0 {
+			Anonymous: ManuallyDrop::new(VARIANT_0_0 {
+				vt: VT_I4,
+				wReserved1: 0,
+				wReserved2: 0,
+				wReserved3: 0,
+				Anonymous: VARIANT_0_0_0 { lVal: LIVE_REGION_POLITE.cast_signed() },
+			}),
+		},
+	};
+	let marked = unsafe {
+		acc_prop
+			.SetHwndProp(hwnd, OBJID_CLIENT.0.cast_unsigned(), CHILDID_SELF, LiveSetting_Property_GUID, &variant)
+			.is_ok()
+	};
+	if !marked {
+		return false;
+	}
+	unsafe {
+		NotifyWinEvent(EVENT_OBJECT_LIVEREGIONCHANGED, hwnd, OBJID_CLIENT.0, CHILDID_SELF.cast_signed());
+	}
+	true
+}
+
+fn acc_prop_services() -> Option<IAccPropServices> {
+	ACC_PROP_SERVICES.with(|cell| {
+		if cell.borrow().is_none()
+			&& let Some(service) = init_acc_prop_services()
+		{
+			*cell.borrow_mut() = Some(service);
+		}
+		cell.borrow().clone()
+	})
+}
+
+fn init_acc_prop_services() -> Option<IAccPropServices> {
+	unsafe {
+		let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+		if hr.is_err() && hr != RPC_E_CHANGED_MODE {
+			return None;
+		}
+		CoCreateInstance(&CLSID_AccPropServices, None, CLSCTX_INPROC_SERVER).ok()
 	}
 }
