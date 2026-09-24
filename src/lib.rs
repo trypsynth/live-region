@@ -99,11 +99,5 @@ pub fn announce_with_priority(label: StaticText, message: &str, priority: Priori
 	if message.is_empty() {
 		return;
 	}
-	// Some announcement paths read the announcer window rather than the event, so the message
-	// has to be there before the event goes out. See the Windows backend for which and why.
-	#[cfg(target_os = "windows")]
-	if platform_impl::wants_announcer_text() {
-		label.set_label(&message);
-	}
 	let _ = platform_impl::announce(&label, &message, priority);
 }

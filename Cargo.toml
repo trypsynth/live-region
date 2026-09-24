@@ -1,6 +1,6 @@
 [package]
 name = "live-region"
-version = "0.3.1"
+version = "0.3.2"
 description = "Simple screen reader output in wxDragon applications"
 readme = "README.md"
 repository = "https://github.com/trypsynth/live-region"
