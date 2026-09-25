@@ -14,7 +14,9 @@ level = "warn"
 check-cfg = ['cfg(feature, values("cargo-clippy"))']
 
 [dependencies]
-wxdragon = "0.9.21"
+# default-features = false so this does not decide for the application
+# which parts of wxWidgets get built; nothing here needs any of them.
+wxdragon = { version = "0.9.21", default-features = false }
 
 [build-dependencies]
 pkg-config = "0.3"
