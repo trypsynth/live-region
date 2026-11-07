@@ -1,5 +1,7 @@
 #![warn(clippy::all, clippy::cargo, clippy::nursery, clippy::pedantic, clippy::perf, unused_crate_dependencies)]
 #![deny(warnings)]
+// wxdragon's own dependencies pull in two major versions of syn, which only their releases can fix.
+#![allow(clippy::multiple_crate_versions)]
 
 use wxdragon::prelude::{StaticText, WxWidget};
 
